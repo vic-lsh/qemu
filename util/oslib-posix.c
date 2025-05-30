@@ -197,8 +197,9 @@ void *qemu_anon_ram_alloc(size_t size, uint64_t *alignment, bool shared,
                                     (noreserve ? QEMU_MAP_NORESERVE : 0);
     size_t align = QEMU_VMALLOC_ALIGN;
     void *ptr = qemu_ram_mmap(-1, size, align, qemu_map_flags, 0);
-
+    
     if (ptr == MAP_FAILED) {
+        printf("qemu_anon_ram_alloc failed\n");
         return NULL;
     }
 
@@ -704,10 +705,11 @@ void *qemu_alloc_stack(size_t *sz)
     /* stack grows down */
     guardpage = ptr;
 #endif
-    if (mprotect(guardpage, pagesz, PROT_NONE) != 0) {
-        perror("failed to set up stack guard page");
-        abort();
-    }
+    printf("%s: ptr: %p guardpage %p pagesz %lu\n", __FUNCTION__, ptr, guardpage, pagesz);
+    // if (mprotect(guardpage, pagesz, PROT_NONE) != 0) {
+    //     perror("failed to set up stack guard page");
+    //     abort();
+    // }
 
 #ifdef CONFIG_DEBUG_STACK_USAGE
     for (ptr2 = ptr + pagesz; ptr2 < ptr + *sz; ptr2 += sizeof(uint32_t)) {

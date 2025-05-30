@@ -234,7 +234,10 @@ void *qemu_ram_mmap(int fd,
 
     guardptr = mmap_reserve(total, fd);
     if (guardptr == MAP_FAILED) {
+        printf("%s: mmap_reserve failed\n", __FUNCTION__);
         return MAP_FAILED;
+    } else {
+        printf("%s: mmap_reserve success: ptr %p size %lu\n", __FUNCTION__, guardptr, total);
     }
 
     assert(is_power_of_2(align));
@@ -246,6 +249,7 @@ void *qemu_ram_mmap(int fd,
     ptr = mmap_activate(guardptr + offset, size, fd, qemu_map_flags,
                         map_offset);
     if (ptr == MAP_FAILED) {
+        printf("%s: mmap_activate failed\n", __FUNCTION__);
         munmap(guardptr, total);
         return MAP_FAILED;
     }
@@ -258,10 +262,10 @@ void *qemu_ram_mmap(int fd,
      * Leave a single PROT_NONE page allocated after the RAM block, to serve as
      * a guard page guarding against potential buffer overflows.
      */
-    total -= offset;
-    if (total > size + guard_pagesize) {
-        munmap(ptr + size + guard_pagesize, total - size - guard_pagesize);
-    }
+    // total -= offset;
+    // if (total > size + guard_pagesize) {
+    //     munmap(ptr + size + guard_pagesize, total - size - guard_pagesize);
+    // }
 
     return ptr;
 }

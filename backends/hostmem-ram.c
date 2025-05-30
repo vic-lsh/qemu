@@ -15,10 +15,13 @@
 #include "qapi/error.h"
 #include "qemu/module.h"
 #include "qom/object_interfaces.h"
+#include "migration/vmstate.h"
+#include "hw/boards.h"
 
 static void
 ram_backend_memory_alloc(HostMemoryBackend *backend, Error **errp)
 {
+    // DeviceState *owner_dev;
     uint32_t ram_flags;
     char *name;
 
@@ -32,6 +35,11 @@ ram_backend_memory_alloc(HostMemoryBackend *backend, Error **errp)
     ram_flags |= backend->reserve ? 0 : RAM_NORESERVE;
     memory_region_init_ram_flags_nomigrate(&backend->mr, OBJECT(backend), name,
                                            backend->size, ram_flags, errp);
+
+    // // make ram migrateable
+    // owner_dev = DEVICE(OBJECT(backend));
+    // vmstate_register_ram(&backend->mr, owner_dev);
+
     g_free(name);
 }
 
