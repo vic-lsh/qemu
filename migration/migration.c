@@ -3764,6 +3764,7 @@ static MigIterateState migration_iteration_run(MigrationState *s)
 {
     uint64_t pending_size, pend_pre, pend_compat, pend_post;
     bool in_postcopy = s->state == MIGRATION_STATUS_POSTCOPY_ACTIVE;
+    (void)in_postcopy;
 
     qemu_savevm_state_pending(s->to_dst_file, s->threshold_size, &pend_pre,
                               &pend_compat, &pend_post);
@@ -3909,6 +3910,7 @@ bool migration_rate_limit(void)
          * something urgent to post the semaphore.
          */
         int ms = s->iteration_start_time + BUFFER_DELAY - now;
+        fprintf(stderr, "migration iteration wait %d ms\n", ms);
         trace_migration_rate_limit_pre(ms);
         if (qemu_sem_timedwait(&s->rate_limit_sem, ms) == 0) {
             /*
@@ -3974,6 +3976,8 @@ static void *migration_thread(void *opaque)
     int64_t setup_start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
     MigThrError thr_error;
     bool urgent = false;
+
+    fprintf(stderr, "starting 'migration_thread'\n");
 
     rcu_register_thread();
 

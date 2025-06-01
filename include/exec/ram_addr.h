@@ -345,6 +345,9 @@ static inline void cpu_physical_memory_set_dirty_lebitmap(unsigned long *bitmap,
     unsigned long hpratio = qemu_real_host_page_size() / TARGET_PAGE_SIZE;
     unsigned long page = BIT_WORD(start >> TARGET_PAGE_BITS);
 
+    // fprintf(stderr, "hpratio %lu real %lu target %u\n", hpratio,
+    //         qemu_real_host_page_size(), TARGET_PAGE_SIZE);
+
     /* start address is aligned at the start of a word? */
     if ((((page * BITS_PER_LONG) << TARGET_PAGE_BITS) == start) &&
         (hpratio == 1)) {
@@ -357,6 +360,8 @@ static inline void cpu_physical_memory_set_dirty_lebitmap(unsigned long *bitmap,
         idx = (start >> TARGET_PAGE_BITS) / DIRTY_MEMORY_BLOCK_SIZE;
         offset = BIT_WORD((start >> TARGET_PAGE_BITS) %
                           DIRTY_MEMORY_BLOCK_SIZE);
+
+        // uint64_t delta_total = 0;
 
         WITH_RCU_READ_LOCK_GUARD() {
             for (i = 0; i < DIRTY_MEMORY_NUM; i++) {
@@ -379,7 +384,9 @@ static inline void cpu_physical_memory_set_dirty_lebitmap(unsigned long *bitmap,
                             total_dirty_pages += ctpopl(temp);
                         }
                     }
-
+                    // uint64_t delta = ctpopl(temp);
+                    // total_dirty_pages += delta;
+                    // delta_total += delta;
                     if (tcg_enabled()) {
                         qatomic_or(&blocks[DIRTY_MEMORY_CODE][idx][offset],
                                    temp);
@@ -392,6 +399,9 @@ static inline void cpu_physical_memory_set_dirty_lebitmap(unsigned long *bitmap,
                 }
             }
         }
+
+        // fprintf(stderr, "total_dirty_pages %lu delta %lu\n", total_dirty_pages, delta_total);
+
 
         xen_hvm_modified_memory(start, pages << TARGET_PAGE_BITS);
     } else {

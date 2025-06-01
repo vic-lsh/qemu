@@ -621,6 +621,9 @@ static void kvm_slot_sync_dirty_pages(KVMSlot *slot)
     ram_addr_t start = slot->ram_start_offset;
     ram_addr_t pages = slot->memory_size / qemu_real_host_page_size();
 
+    fprintf(stderr, "kvm_slot_sync_dirty_pages slot start 0x%lx len %lu pages %lu\n",
+           start, slot->memory_size, pages);
+
     cpu_physical_memory_set_dirty_lebitmap(slot->dirty_bmap, start, pages);
 }
 
@@ -637,6 +640,7 @@ static void kvm_slot_init_dirty_bitmap(KVMSlot *mem)
     if (!(mem->flags & KVM_MEM_LOG_DIRTY_PAGES) || mem->dirty_bmap) {
         return;
     }
+
 
     /*
      * XXX bad kernel interface alert
@@ -659,6 +663,9 @@ static void kvm_slot_init_dirty_bitmap(KVMSlot *mem)
                                         /*HOST_LONG_BITS*/ 64) / 8;
     mem->dirty_bmap = g_malloc0(bitmap_size);
     mem->dirty_bmap_size = bitmap_size;
+
+    printf("initting bitmap pagesize %lu bitmap size %lu\n",
+           qemu_real_host_page_size(), bitmap_size);
 }
 
 /*
@@ -774,6 +781,7 @@ static uint64_t kvm_dirty_ring_reap_locked(KVMState *s, CPUState* cpu)
     int ret;
     uint64_t total = 0;
     int64_t stamp;
+    fprintf(stderr, "kvm_dirty_ring_reap_locked\n");
 
     stamp = get_clock();
 
@@ -901,6 +909,8 @@ static void kvm_physical_sync_dirty_bitmap(KVMMemoryListener *kml,
             /* We don't have a slot if we want to trap every access. */
             return;
         }
+        fprintf(stderr, "kvm_physical_sync_dirty_bitmap start_addr 0x%lx slot sz %lu\n",
+               start_addr, slot_size);
         if (kvm_slot_get_dirty_log(s, mem)) {
             kvm_slot_sync_dirty_pages(mem);
         }
@@ -1448,6 +1458,7 @@ static void kvm_set_phys_mem(KVMMemoryListener *kml,
         mem->ram_start_offset = ram_start_offset;
         mem->ram = ram;
         mem->flags = kvm_mem_flags(mr);
+        mem->flags |= KVM_MEM_LOG_DIRTY_PAGES;
         kvm_slot_init_dirty_bitmap(mem);
         err = kvm_set_user_memory_region(kml, mem, true);
         if (err) {

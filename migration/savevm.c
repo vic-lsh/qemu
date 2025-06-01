@@ -1228,6 +1228,8 @@ int qemu_savevm_state_iterate(QEMUFile *f, bool postcopy)
     SaveStateEntry *se;
     int ret = 1;
 
+    fprintf(stderr, "qemu_savevm_state_iterate\n");
+
     trace_savevm_state_iterate();
     QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
         if (!se->ops || !se->ops->save_live_iterate) {
@@ -1482,7 +1484,7 @@ void qemu_savevm_state_pending(QEMUFile *f, uint64_t threshold_size,
     *res_compatible = 0;
     *res_postcopy_only = 0;
 
-
+    size_t iter = 0;
     QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
         if (!se->ops || !se->ops->save_live_pending) {
             continue;
@@ -1492,6 +1494,7 @@ void qemu_savevm_state_pending(QEMUFile *f, uint64_t threshold_size,
                 continue;
             }
         }
+        fprintf(stderr, "qemu_save_vm_state_pending iter %lu\n", iter++);
         se->ops->save_live_pending(f, se->opaque, threshold_size,
                                    res_precopy_only, res_compatible,
                                    res_postcopy_only);

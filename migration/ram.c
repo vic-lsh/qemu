@@ -1056,6 +1056,9 @@ static void ramblock_sync_dirty_bitmap(RAMState *rs, RAMBlock *rb)
     uint64_t new_dirty_pages =
         cpu_physical_memory_sync_dirty_bitmap(rb, 0, rb->used_length);
 
+    fprintf(stderr, "ramblock_sync_dirty_bitmap block %s new dirty pages %lu\n",
+            rb->idstr, new_dirty_pages);
+
     rs->migration_dirty_pages += new_dirty_pages;
     rs->num_dirty_pages_period += new_dirty_pages;
 }
@@ -1174,6 +1177,7 @@ static void migration_bitmap_sync(RAMState *rs)
     int64_t end_time;
 
     ram_counters.dirty_sync_count++;
+    fprintf(stderr, "migration_bitmap_sync count %ld\n", ram_counters.dirty_sync_count);
 
     if (!rs->time_last_bitmap_sync) {
         rs->time_last_bitmap_sync = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
@@ -1217,6 +1221,8 @@ static void migration_bitmap_sync(RAMState *rs)
 static void migration_bitmap_sync_precopy(RAMState *rs)
 {
     Error *local_err = NULL;
+
+    fprintf(stderr, "migration_bitmap_sync_precopy\n");
 
     /*
      * The current notifier usage is just an optimization to migration, so we
@@ -3276,6 +3282,8 @@ static int ram_save_iterate(QEMUFile *f, void *opaque)
     int64_t t0;
     int done = 0;
 
+    fprintf(stderr, "ram_save_iterate\n");
+
     if (blk_mig_bulk_active()) {
         /* Avoid transferring ram during bulk phase of block migration as
          * the bulk phase will usually take a long time and transferring
@@ -3454,6 +3462,9 @@ static void ram_save_pending(QEMUFile *f, void *opaque, uint64_t max_size,
     uint64_t remaining_size;
 
     remaining_size = rs->migration_dirty_pages * TARGET_PAGE_SIZE;
+
+    fprintf(stderr, "ram_save_pending remaining pages %lu max_sz %lu postcopy %d\n",
+            rs->migration_dirty_pages, max_size, migration_in_postcopy());
 
     if (!migration_in_postcopy() &&
         remaining_size < max_size) {
