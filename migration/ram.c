@@ -3522,6 +3522,11 @@ static int ram_dirty_track_iteration(void *opaque)
 {
     RAMState **temp = opaque;
     RAMState *rs = *temp;
+
+    if (!rs) {
+        return 0;
+    }
+
     assert(migration_in_postcopy() == false);
 
     // vic: wrap this with iothread lock?

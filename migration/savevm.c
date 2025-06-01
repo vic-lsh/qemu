@@ -1192,6 +1192,38 @@ void qemu_savevm_state_setup(QEMUFile *f)
     }
 }
 
+void qemu_nemo_savevm_state_setup(void)
+{
+    SaveStateEntry *se;
+    // Error *local_err = NULL;
+    // int ret;
+
+    // trace_savevm_state_setup();
+    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+        if (!se->ops || !se->ops->save_setup) {
+            continue;
+        }
+        if (se->ops->is_active) {
+            if (!se->ops->is_active(se->opaque)) {
+                continue;
+            }
+        }
+        // save_section_header(f, se, QEMU_VM_SECTION_START);
+
+        // ret = se->ops->save_setup(f, se->opaque);
+        // save_section_footer(f, se);
+        // if (ret < 0) {
+        //     qemu_file_set_error(f, ret);
+        //     break;
+        // }
+    }
+
+    // if (precopy_notify(PRECOPY_NOTIFY_SETUP, &local_err)) {
+    //     error_report_err(local_err);
+    // }
+}
+
+
 int qemu_savevm_state_resume_prepare(MigrationState *s)
 {
     SaveStateEntry *se;

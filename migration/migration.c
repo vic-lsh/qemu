@@ -200,6 +200,9 @@ static gint page_request_addr_cmp(gconstpointer ap, gconstpointer bp)
     return (a > b) - (a < b);
 }
 
+QemuThread pml_thread;
+static void *nemo_pml_thread(void* opaque);
+
 void migration_object_init(void)
 {
     /* This can only be called once. */
@@ -229,6 +232,10 @@ void migration_object_init(void)
     blk_mig_init();
     ram_mig_init();
     dirty_bitmap_mig_init();
+
+    // TODO: spawn nemo thread
+    qemu_thread_create(&pml_thread, "nemo-pml-thread",
+             nemo_pml_thread, current_migration, QEMU_THREAD_JOINABLE);
 }
 
 void migration_cancel(const Error *error)
@@ -4029,6 +4036,107 @@ static void *migration_thread(void *opaque)
         (void)postcopy_start;
 
         fprintf(stderr, "migration loop iter %lu\n", iter++);
+        MigIterateState iter_state = migration_iteration_run(s);
+        if (iter_state == MIG_ITERATE_SKIP) {
+            continue;
+        } else if (iter_state == MIG_ITERATE_BREAK) {
+            break;
+        }
+        sleep(1); 
+
+        // if (urgent || !qemu_file_rate_limit(s->to_dst_file)) {
+        //     MigIterateState iter_state = migration_iteration_run(s);
+        //     if (iter_state == MIG_ITERATE_SKIP) {
+        //         continue;
+        //     } else if (iter_state == MIG_ITERATE_BREAK) {
+        //         break;
+        //     }
+        // }
+
+        // /*
+        //  * Try to detect any kind of failures, and see whether we
+        //  * should stop the migration now.
+        //  */
+        // thr_error = migration_detect_error(s);
+        // if (thr_error == MIG_THR_ERR_FATAL) {
+        //     /* Stop migration */
+        //     break;
+        // } else if (thr_error == MIG_THR_ERR_RECOVERED) {
+        //     /*
+        //      * Just recovered from a e.g. network failure, reset all
+        //      * the local variables. This is important to avoid
+        //      * breaking transferred_bytes and bandwidth calculation
+        //      */
+        //     update_iteration_initial_status(s);
+        // }
+        // urgent = migration_rate_limit();
+    }
+
+    trace_migration_thread_after_loop();
+    migration_iteration_finish(s);
+    object_unref(OBJECT(s));
+    rcu_unregister_thread();
+    return NULL;
+}
+
+static void *nemo_pml_thread(void* opaque) {
+    MigrationState *s = opaque;
+    // int64_t setup_start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
+    MigThrError thr_error;
+    bool urgent = false;
+
+    fprintf(stderr, "starting 'nemo_pml_thread'\n");
+
+    rcu_register_thread();
+
+    object_ref(OBJECT(s));
+    // update_iteration_initial_status(s);
+
+    // qemu_savevm_state_header(s->to_dst_file);
+
+    // /*
+    //  * If we opened the return path, we need to make sure dst has it
+    //  * opened as well.
+    //  */
+    // if (s->rp_state.rp_thread_created) {
+    //     /* Now tell the dest that it should open its end so it can reply */
+    //     qemu_savevm_send_open_return_path(s->to_dst_file);
+
+    //     /* And do a ping that will make stuff easier to debug */
+    //     qemu_savevm_send_ping(s->to_dst_file, 1);
+    // }
+
+    // if (migrate_postcopy()) {
+    //     /*
+    //      * Tell the destination that we *might* want to do postcopy later;
+    //      * if the other end can't do postcopy it should fail now, nice and
+    //      * early.
+    //      */
+    //     qemu_savevm_send_postcopy_advise(s->to_dst_file);
+    // }
+
+    // if (migrate_colo_enabled()) {
+    //     /* Notify migration destination that we enable COLO */
+    //     qemu_savevm_send_colo_enable(s->to_dst_file);
+    // }
+
+    qemu_nemo_savevm_state_setup();
+
+    // qemu_savevm_wait_unplug(s, MIGRATION_STATUS_SETUP,
+    //                            MIGRATION_STATUS_ACTIVE);
+
+    // s->setup_time = qemu_clock_get_ms(QEMU_CLOCK_HOST) - setup_start;
+
+    // trace_migration_thread_setup_complete();
+
+    size_t iter = 0;
+    while (true) {
+        (void)urgent;
+        (void)thr_error;
+        (void)migration_completion;
+        (void)postcopy_start;
+
+        fprintf(stderr, "nemo pml loop iter %lu\n", iter++);
         MigIterateState iter_state = migration_iteration_run(s);
         if (iter_state == MIG_ITERATE_SKIP) {
             continue;
