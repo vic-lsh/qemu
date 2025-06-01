@@ -3772,24 +3772,30 @@ static MigIterateState migration_iteration_run(MigrationState *s)
     trace_migrate_pending(pending_size, s->threshold_size,
                           pend_pre, pend_compat, pend_post);
 
-    if (pending_size && pending_size >= s->threshold_size) {
-        /* Still a significant amount to transfer */
-        if (!in_postcopy && pend_pre <= s->threshold_size &&
-            qatomic_read(&s->start_postcopy)) {
-            if (postcopy_start(s)) {
-                error_report("%s: postcopy failed to start", __func__);
-            }
-            return MIG_ITERATE_SKIP;
-        }
-        /* Just another iteration step */
-        qemu_savevm_state_iterate(s->to_dst_file, in_postcopy);
-    } else {
-        trace_migration_thread_low_pending(pending_size);
-        migration_completion(s);
-        return MIG_ITERATE_BREAK;
-    }
-
     return MIG_ITERATE_RESUME;
+
+    // Disable copy logic.
+
+    // if (pending_size && pending_size >= s->threshold_size) {
+    //     /* Still a significant amount to transfer */
+    //     if (!in_postcopy && pend_pre <= s->threshold_size &&
+    //         qatomic_read(&s->start_postcopy)) {
+    //         if (postcopy_start(s)) {
+    //             error_report("%s: postcopy failed to start", __func__);
+    //         }
+    //         fprintf(stderr, "skipping migration iteration pending sz %lu threshold %lu\n",
+    //                 pending_size, s->threshold_size);
+    //         return MIG_ITERATE_SKIP;
+    //     }
+    //     /* Just another iteration step */
+    //     qemu_savevm_state_iterate(s->to_dst_file, in_postcopy);
+    // } else {
+    //     trace_migration_thread_low_pending(pending_size);
+    //     migration_completion(s);
+    //     return MIG_ITERATE_BREAK;
+    // }
+
+    // return MIG_ITERATE_RESUME;
 }
 
 static void migration_iteration_finish(MigrationState *s)
@@ -4011,34 +4017,48 @@ static void *migration_thread(void *opaque)
 
     trace_migration_thread_setup_complete();
 
+    size_t iter = 0;
     while (migration_is_active(s)) {
-        if (urgent || !qemu_file_rate_limit(s->to_dst_file)) {
-            MigIterateState iter_state = migration_iteration_run(s);
-            if (iter_state == MIG_ITERATE_SKIP) {
-                continue;
-            } else if (iter_state == MIG_ITERATE_BREAK) {
-                break;
-            }
-        }
+        (void)urgent;
+        (void)thr_error;
+        (void)migration_completion;
+        (void)postcopy_start;
 
-        /*
-         * Try to detect any kind of failures, and see whether we
-         * should stop the migration now.
-         */
-        thr_error = migration_detect_error(s);
-        if (thr_error == MIG_THR_ERR_FATAL) {
-            /* Stop migration */
+        fprintf(stderr, "migration loop iter %lu\n", iter++);
+        MigIterateState iter_state = migration_iteration_run(s);
+        if (iter_state == MIG_ITERATE_SKIP) {
+            continue;
+        } else if (iter_state == MIG_ITERATE_BREAK) {
             break;
-        } else if (thr_error == MIG_THR_ERR_RECOVERED) {
-            /*
-             * Just recovered from a e.g. network failure, reset all
-             * the local variables. This is important to avoid
-             * breaking transferred_bytes and bandwidth calculation
-             */
-            update_iteration_initial_status(s);
         }
+        sleep(1); 
 
-        urgent = migration_rate_limit();
+        // if (urgent || !qemu_file_rate_limit(s->to_dst_file)) {
+        //     MigIterateState iter_state = migration_iteration_run(s);
+        //     if (iter_state == MIG_ITERATE_SKIP) {
+        //         continue;
+        //     } else if (iter_state == MIG_ITERATE_BREAK) {
+        //         break;
+        //     }
+        // }
+
+        // /*
+        //  * Try to detect any kind of failures, and see whether we
+        //  * should stop the migration now.
+        //  */
+        // thr_error = migration_detect_error(s);
+        // if (thr_error == MIG_THR_ERR_FATAL) {
+        //     /* Stop migration */
+        //     break;
+        // } else if (thr_error == MIG_THR_ERR_RECOVERED) {
+        //     /*
+        //      * Just recovered from a e.g. network failure, reset all
+        //      * the local variables. This is important to avoid
+        //      * breaking transferred_bytes and bandwidth calculation
+        //      */
+        //     update_iteration_initial_status(s);
+        // }
+        // urgent = migration_rate_limit();
     }
 
     trace_migration_thread_after_loop();

@@ -3507,6 +3507,55 @@ static int load_xbzrle(QEMUFile *f, ram_addr_t addr, void *host)
     return 0;
 }
 
+static int ram_dirty_track_iteration(void *opaque)
+{
+    RAMState **temp = opaque;
+    RAMState *rs = *temp;
+    assert(migration_in_postcopy() == false);
+
+    // vic: wrap this with iothread lock?
+    WITH_RCU_READ_LOCK_GUARD() {
+        migration_bitmap_sync_precopy(rs);
+    }
+
+    int n_dirty_pages = 0;
+    WITH_QEMU_LOCK_GUARD(&rs->bitmap_mutex) {
+        WITH_RCU_READ_LOCK_GUARD() {
+            // TODO: we only care about block.idstr == 'pc.ram'
+            RAMBlock *block;
+            RAMBLOCK_FOREACH_MIGRATABLE(block) {
+                assert(block->bmap != NULL);
+                unsigned long nbits = block->used_length >> TARGET_PAGE_BITS;
+                unsigned long ndirty_bits = bitmap_count_one_with_offset(block->bmap, 0, nbits);
+                memory_region_clear_dirty_bitmap(block->mr, 0, block->used_length);
+                fprintf(stderr, "block %s dirty pages %lu total %lu\n",
+                        block->idstr, ndirty_bits, nbits);
+                n_dirty_pages += ndirty_bits;
+
+                unsigned long bit = 0;
+                while (1) {
+                    bit = find_next_bit(block->bmap, nbits, bit);
+                    if (bit >= nbits) break;
+                    assert(test_and_clear_bit(bit, block->bmap));
+                    ++bit;
+                }
+            }
+        }
+    }
+
+    return n_dirty_pages;
+}
+
+static void ram_save_pending_nemo(QEMUFile *f, void *opaque, uint64_t max_size,
+                             uint64_t *res_precopy_only,
+                             uint64_t *res_compatible,
+                             uint64_t *res_postcopy_only)
+{
+    // avoid unused error with the previous handler
+    (void)ram_save_pending;
+    ram_dirty_track_iteration(opaque);
+}
+
 /**
  * ram_block_from_stream: read a RAMBlock id from the migration stream
  *
@@ -4612,7 +4661,7 @@ static SaveVMHandlers savevm_ram_handlers = {
     .save_live_complete_postcopy = ram_save_complete,
     .save_live_complete_precopy = ram_save_complete,
     .has_postcopy = ram_has_postcopy,
-    .save_live_pending = ram_save_pending,
+    .save_live_pending = ram_save_pending_nemo,
     .load_state = ram_load,
     .save_cleanup = ram_save_cleanup,
     .load_setup = ram_load_setup,
