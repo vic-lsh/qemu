@@ -3518,19 +3518,38 @@ static int load_xbzrle(QEMUFile *f, ram_addr_t addr, void *host)
     return 0;
 }
 
+// Payload to send to nemo. Ensure consistency between this and the nemo
+// receiving logic.
+struct nemo_payload {
+    /**
+     * Number of bytes in the bitmap.
+     */
+    uint64_t nbytes;
+    /**
+     * The host virtual address pointing to the start of the guest physical
+     * address range.
+     */
+    uint64_t hva;
+};
+
 static int dirty_scan_block(RAMBlock* block) {
     int n_dirty_pages = 0;
 
     unsigned long nbits = block->used_length >> TARGET_PAGE_BITS;
     unsigned long ndirty_bits = bitmap_count_one_with_offset(block->bmap, 0, nbits);
     memory_region_clear_dirty_bitmap(block->mr, 0, block->used_length);
-    fprintf(stderr, "block %s dirty pages %lu total %lu\n",
-            block->idstr, ndirty_bits, nbits);
+    fprintf(stderr, "block %s offset 0x%lx dirty pages %lu total %lu\n",
+            block->idstr, block->offset, ndirty_bits, nbits);
     n_dirty_pages += ndirty_bits;
 
     unsigned long nbytes = nbits / 8;
     memcpy(nemo_ucm_shm, block->bmap, nbytes);
-    if (send(nemo_ucm_fd, &nbytes, sizeof(nbytes), 0) == -1) {
+
+    struct nemo_payload payload = {
+        .nbytes = nbytes,
+        .hva = (uint64_t)block->host,
+    };
+    if (send(nemo_ucm_fd, &payload, sizeof(payload), 0) == -1) {
         perror("Send failed");
         exit(EXIT_FAILURE);
     }
