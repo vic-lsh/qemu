@@ -3966,6 +3966,94 @@ static void qemu_savevm_wait_unplug(MigrationState *s, int old_state,
     }
 }
 
+int nemo_ucm_fd = 0;
+void* nemo_ucm_shm = NULL;
+
+static void nemo_shm_setup(void) {
+#define SOCKET_PATH "/tmp/nemo_pml"
+#define SHM_NAME_MAX_LEN 256
+#define SHM_SIZE (1024 * 1024)
+
+    struct sockaddr_un server_addr;
+    char shm_name_received[SHM_NAME_MAX_LEN];
+
+    int shm_fd;
+
+    // 1. Create the socket
+    if ((nemo_ucm_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+        perror("socket error");
+        exit(EXIT_FAILURE);
+    }
+
+    memset(&server_addr, 0, sizeof(struct sockaddr_un));
+    server_addr.sun_family = AF_UNIX;
+    strncpy(server_addr.sun_path, SOCKET_PATH, sizeof(server_addr.sun_path)-1);
+
+    // 2. Connect to the server
+    if (connect(nemo_ucm_fd, (struct sockaddr *)&server_addr,
+                sizeof(struct sockaddr_un)) == -1) {
+        perror("connect error");
+        close(nemo_ucm_fd);
+        exit(EXIT_FAILURE);
+    }
+    printf("Client connected to server: %s\n", SOCKET_PATH);
+
+    // 3. Receive the shared memory name from the server
+    int bytes_received = recv(nemo_ucm_fd, shm_name_received,
+                              SHM_NAME_MAX_LEN - 1, 0);
+    if (bytes_received <= 0) {
+        if (bytes_received == 0) {
+            printf("Server closed connection while sending SHM name.\n");
+        } else {
+            perror("recv SHM_NAME error");
+        }
+        close(nemo_ucm_fd);
+        exit(EXIT_FAILURE);
+    }
+    shm_name_received[bytes_received] = '\0';
+    printf("Client received SHM name: %s\n", shm_name_received);
+
+    // --- Shared Memory Access ---
+    // 4. Open the existing shared memory object (created by server)
+    shm_fd = shm_open(shm_name_received, O_RDWR, 0666);
+    if (shm_fd == -1) {
+        perror("client: shm_open error");
+        close(nemo_ucm_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    // 5. Map the shared memory object into the client's address space
+    nemo_ucm_shm = mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED,
+                        shm_fd, 0);
+    if (nemo_ucm_shm == MAP_FAILED) {
+        perror("client: mmap error");
+        close(shm_fd);
+        close(nemo_ucm_fd);
+        exit(EXIT_FAILURE);
+    }
+    close(shm_fd);
+    printf("Client mapped shared memory region: %s\n", shm_name_received);
+
+    // 6. Read from shared memory (data written by server)
+    printf("Client reads from shared memory: '%p'\n", (char *)nemo_ucm_shm);
+
+    // // 7. Write to shared memory (for server to see)
+    // char client_message[100];
+    // sprintf(client_message, "Hello from client via shared memory! PID: %d", getpid());
+    // strncpy((char *)nemo_ucm_shm, client_message, SHM_SIZE -1); // Be careful with buffer overflows
+    // ((char*)nemo_ucm_shm)[SHM_SIZE-1] = '\0'; // Ensure null termination if string is large
+    // printf("Client wrote to shared memory: '%s'\n", client_message);
+
+    // // 8. Send a confirmation/message back to server via socket
+    // const char *confirmation_msg = "Client mapped SHM and wrote to it.";
+    // if (send(nemo_ucm_fd, confirmation_msg, strlen(confirmation_msg), 0) == -1) {
+    //     perror("client: send confirmation error");
+    //     // Continue, but server might not get the confirmation
+    // } else {
+    //     printf("Client sent confirmation to server (socket): %s\n", confirmation_msg);
+    // }
+}
+
 /*
  * Master migration thread on the source VM.
  * It drives the migration and pumps the data down the outgoing channel.
@@ -3980,6 +4068,8 @@ static void *migration_thread(void *opaque)
     fprintf(stderr, "starting 'migration_thread'\n");
 
     rcu_register_thread();
+
+    nemo_shm_setup();
 
     object_ref(OBJECT(s));
     update_iteration_initial_status(s);

@@ -3518,6 +3518,35 @@ static int load_xbzrle(QEMUFile *f, ram_addr_t addr, void *host)
     return 0;
 }
 
+static int dirty_scan_block(RAMBlock* block) {
+    int n_dirty_pages = 0;
+
+    unsigned long nbits = block->used_length >> TARGET_PAGE_BITS;
+    unsigned long ndirty_bits = bitmap_count_one_with_offset(block->bmap, 0, nbits);
+    memory_region_clear_dirty_bitmap(block->mr, 0, block->used_length);
+    fprintf(stderr, "block %s dirty pages %lu total %lu\n",
+            block->idstr, ndirty_bits, nbits);
+    n_dirty_pages += ndirty_bits;
+
+    unsigned long nbytes = nbits / 8;
+    memcpy(nemo_ucm_shm, block->bmap, nbytes);
+    if (send(nemo_ucm_fd, &nbytes, sizeof(nbytes), 0) == -1) {
+        perror("Send failed");
+        exit(EXIT_FAILURE);
+    }
+    printf("Sent n bitmap size: %lu bytes\n", nbytes); 
+    
+    unsigned long bit = 0;
+    while (1) {
+        bit = find_next_bit(block->bmap, nbits, bit);
+        if (bit >= nbits) break;
+        assert(test_and_clear_bit(bit, block->bmap));
+        ++bit;
+    }
+
+    return n_dirty_pages;
+}
+
 static int ram_dirty_track_iteration(void *opaque)
 {
     RAMState **temp = opaque;
@@ -3529,26 +3558,15 @@ static int ram_dirty_track_iteration(void *opaque)
         migration_bitmap_sync_precopy(rs);
     }
 
+    // we only care about block.idstr == 'pc.ram'
+    const char* ram_target = "pc.ram";
     int n_dirty_pages = 0;
     WITH_QEMU_LOCK_GUARD(&rs->bitmap_mutex) {
         WITH_RCU_READ_LOCK_GUARD() {
-            // TODO: we only care about block.idstr == 'pc.ram'
             RAMBlock *block;
             RAMBLOCK_FOREACH_MIGRATABLE(block) {
-                assert(block->bmap != NULL);
-                unsigned long nbits = block->used_length >> TARGET_PAGE_BITS;
-                unsigned long ndirty_bits = bitmap_count_one_with_offset(block->bmap, 0, nbits);
-                memory_region_clear_dirty_bitmap(block->mr, 0, block->used_length);
-                fprintf(stderr, "block %s dirty pages %lu total %lu\n",
-                        block->idstr, ndirty_bits, nbits);
-                n_dirty_pages += ndirty_bits;
-
-                unsigned long bit = 0;
-                while (1) {
-                    bit = find_next_bit(block->bmap, nbits, bit);
-                    if (bit >= nbits) break;
-                    assert(test_and_clear_bit(bit, block->bmap));
-                    ++bit;
+                if (strcmp(block->idstr, ram_target) == 0) {
+                    n_dirty_pages += dirty_scan_block(block);
                 }
             }
         }

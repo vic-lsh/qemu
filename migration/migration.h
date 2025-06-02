@@ -480,4 +480,8 @@ void postcopy_temp_page_reset(PostcopyTmpPage *tmp_page);
 bool migrate_multi_channels_is_allowed(void);
 void migrate_protocol_allow_multi_channels(bool allow);
 
+// nemo specifics
+extern int nemo_ucm_fd;
+extern void* nemo_ucm_shm;
+
 #endif
