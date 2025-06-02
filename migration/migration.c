@@ -3998,6 +3998,12 @@ static void nemo_shm_setup(void) {
     }
     printf("Client connected to server: %s\n", SOCKET_PATH);
 
+    pid_t pid = getpid();
+    if (send(nemo_ucm_fd, &pid, sizeof(pid), 0) == -1) {
+        perror("Send pid failed");
+        exit(EXIT_FAILURE);
+    }
+
     // 3. Receive the shared memory name from the server
     int bytes_received = recv(nemo_ucm_fd, shm_name_received,
                               SHM_NAME_MAX_LEN - 1, 0);
